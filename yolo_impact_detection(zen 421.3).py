@@ -19,7 +19,7 @@ location_choice = input("Enter your choice (1/2): ")
 
 
 # Google Maps API Key
-GOOGLE_MAPS_API_KEY = "AIzaSyCB4hdho1g8HpY8kO65bNG7GTVJPIhshrg"
+GOOGLE_MAPS_API_KEY = ""
 gmaps = googlemaps.Client(key=GOOGLE_MAPS_API_KEY)
 
 # Email credentials
