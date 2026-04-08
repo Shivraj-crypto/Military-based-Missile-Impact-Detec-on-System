@@ -1,3 +1,4 @@
+
 import cv2
 import numpy as np
 import smtplib
@@ -11,16 +12,22 @@ import requests
 import math
 
 
-# Location source selection
-print("Select location source:")
-print("1. PC's Location (IP-based)")
-print("2. Drone's GPS Coordinates")
-location_choice = input("Enter your choice (1/2): ")
+
+# Location source selection (function for reusability)
+def select_location_source():
+    print("Select location source:")
+    print("1. PC's Location (IP-based)")
+    print("2. Drone's GPS Coordinates")
+    return input("Enter your choice (1/2): ")
+
+location_choice = select_location_source()
+
 
 
 # Google Maps API Key
 GOOGLE_MAPS_API_KEY = ""
 gmaps = googlemaps.Client(key=GOOGLE_MAPS_API_KEY)
+
 
 # Email credentials
 SMTP_SERVER = "smtp.gmail.com"
@@ -28,86 +35,90 @@ SMTP_PORT = 587
 EMAIL_ADDRESS = "aairconfisys@gmail.com"
 EMAIL_PASSWORD = "nsya zbgo cyqx bxjj"  # Use an App Password
 
+
 # Load YOLO model
-net = cv2.dnn.readNet(
-    r"C:\Project\Confidential Project (Military)\trained 1\yolov3_training_last.weights",
-    r"C:\Project\Confidential Project (Military)\trained 1\yolov3_testing.cfg"
-)
-
-classes = ["Explosion"]
-
-layer_names = net.getLayerNames()
-if isinstance(net.getUnconnectedOutLayers(), np.ndarray):
-    output_layers = [layer_names[i - 1] for i in net.getUnconnectedOutLayers()]
-else:
-    output_layers = [layer_names[net.getUnconnectedOutLayers() - 1]]
+def load_yolo():
+    net = cv2.dnn.readNet(
+        r"C:\Project\Confidential Project (Military)\trained 1\yolov3_training_last.weights",
+        r"C:\Project\Confidential Project (Military)\trained 1\yolov3_testing.cfg"
+    )
+    classes = ["Explosion"]
+    layer_names = net.getLayerNames()
+    if isinstance(net.getUnconnectedOutLayers(), np.ndarray):
+        output_layers = [layer_names[i - 1] for i in net.getUnconnectedOutLayers()]
+    else:
+        output_layers = [layer_names[net.getUnconnectedOutLayers() - 1]]
+    return net, classes, output_layers
 
 box_color = (255, 255, 255)
 stroke_color = (0, 0, 0)
 text_color = (255, 255, 255)
 
-# Camera input selection
-print("Select input source:")
-print("1. Physical Camera (Default webcam)")
-print("2. OBS Virtual Camera")
-choice = input("Enter your choice (1/2): ")
 
-if choice == "1":
-    cap = cv2.VideoCapture(0)
-elif choice == "2":
-    virtual_cam_index = input("Enter the camera index for OBS Virtual Camera (usually 1 or higher): ")
-    cap = cv2.VideoCapture(int(virtual_cam_index))
-else:
-    print("Invalid choice. Exiting...")
-    exit()
+# Camera input selection (function for reusability)
+def select_camera():
+    print("Select input source:")
+    print("1. Physical Camera (Default webcam)")
+    print("2. OBS Virtual Camera")
+    choice = input("Enter your choice (1/2): ")
+    if choice == "1":
+        cap = cv2.VideoCapture(0)
+    elif choice == "2":
+        virtual_cam_index = input("Enter the camera index for OBS Virtual Camera (usually 1 or higher): ")
+        cap = cv2.VideoCapture(int(virtual_cam_index))
+    else:
+        print("Invalid choice. Exiting...")
+        exit()
+    if not cap.isOpened():
+        print("Error: Could not open the selected camera.")
+        exit()
+    return cap
 
-if not cap.isOpened():
-    print("Error: Could not open the selected camera.")
-    exit()
+cap = select_camera()
     
+
 # Global variable to store the last coordinates
 last_coords = None
-
-# Initialize previous coordinates
 previous_lat, previous_lng = None, None
+last_gps_fetch_time = 0
+gps_cache = None
 
-def get_gps_coordinates():
-    
-    global previous_lat, previous_lng  # Use global variables to track the previous coordinates
-    
+
+# Efficient GPS coordinate retrieval with caching
+def get_gps_coordinates(cache_duration=2):
+    global previous_lat, previous_lng, last_gps_fetch_time, gps_cache
+    now = time.time()
+    if gps_cache and (now - last_gps_fetch_time < cache_duration):
+        return gps_cache
     if location_choice == "2":
         try:
             lat = 19.230154
             lng = 72.839063
-            
             if lat != previous_lat or lng != previous_lng:
                 print(f"Retrieved GPS coordinates: Latitude {lat}, Longitude {lng}")
-                previous_lat, previous_lng = lat, lng  # Update the previous coordinates
-                
+                previous_lat, previous_lng = lat, lng
+            gps_cache = (lat, lng)
+            last_gps_fetch_time = now
             return lat, lng
         except ValueError:
             print("Invalid GPS coordinates. Please enter valid latitude and longitude values.")
             return None
     else:
         try:
-            # Retrieve GPS coordinates using Google's Geolocation API
             url = "https://www.googleapis.com/geolocation/v1/geolocate"
             payload = {"considerIp": True}
             headers = {"Content-Type": "application/json"}
-            
-            # Include your Google Maps API Key
             params = {"key": GOOGLE_MAPS_API_KEY}
             response = requests.post(url, json=payload, params=params)
-
             if response.status_code == 200:
                 data = response.json()
                 lat = data['location']['lat']
                 lng = data['location']['lng']
-                
                 if lat != previous_lat or lng != previous_lng:
                     print(f"Retrieved GPS coordinates: Latitude {lat}, Longitude {lng}")
-                    previous_lat, previous_lng = lat, lng  # Update the previous coordinates
-                    
+                    previous_lat, previous_lng = lat, lng
+                gps_cache = (lat, lng)
+                last_gps_fetch_time = now
                 return lat, lng
             else:
                 print(f"Error with Google Geolocation API: {response.status_code}, {response.text}")
@@ -179,6 +190,7 @@ def send_email(drone_coords, target_coords=None):
     except Exception as e:
         print(f"Failed to send email: {e}")
 
+
 # Multi-event handling variables
 last_alert_time = 0
 cooldown_period = 60  # seconds
@@ -187,24 +199,35 @@ cooldown_period = 60  # seconds
 camera_fov_horizontal = 96   # degrees
 camera_fov_vertical = 73   # degrees
 
-while True:
-    ret, frame = cap.read()
-    if not ret:
-        print("Failed to grab frame. Exiting...")
-        break
+# Mouse callback function
+def on_mouse_event(event, x, y, flags, param):
+    global cursor_coords
+    if event == cv2.EVENT_MOUSEMOVE:
+        cursor_coords = (x, y)
 
-    # Get the GPS coordinates in real-time
-    drone_coords = get_gps_coordinates()
+# Example camera orientation and altitude values
+camera_altitude = 7.4676  # in meters
+pitch_angle = 60  # in degrees
+roll_angle = 0  # assuming no roll
+yaw_angle = 90  # assuming the camera faces north
+image_width = 1920  # in pixels
+image_height = 1080  # in pixels
 
-    height, width, _ = frame.shape
+# Initialize mouse event handling
+cursor_coords = None
+cv2.namedWindow("Real-Time Detection")
+cv2.setMouseCallback("Real-Time Detection", on_mouse_event)
+
+# Load YOLO once
+net, classes, output_layers = load_yolo()
+
+def process_frame(frame, net, output_layers, classes, width, height):
     blob = cv2.dnn.blobFromImage(frame, 0.00392, (416, 416), (0, 0, 0), True, crop=False)
     net.setInput(blob)
     outs = net.forward(output_layers)
-
     class_ids = []
     confidences = []
     boxes = []
-
     for out in outs:
         for detection in out:
             scores = detection[5:]
@@ -215,75 +238,88 @@ while True:
                 center_y = int(detection[1] * height)
                 w = int(detection[2] * width)
                 h = int(detection[3] * height)
-
                 x = int(center_x - w / 2)
                 y = int(center_y - h / 2)
-
                 boxes.append([x, y, w, h])
                 confidences.append(float(confidence))
                 class_ids.append(class_id)
-
     indexes = cv2.dnn.NMSBoxes(boxes, confidences, score_threshold=0.5, nms_threshold=0.3)
+    return boxes, confidences, class_ids, indexes
 
-    if len(indexes) > 0:
-        indexes = indexes.flatten() if isinstance(indexes, np.ndarray) else indexes
-        for i in indexes:
-            x, y, w, h = boxes[i]
-            label = str(classes[class_ids[i]])
-            cv2.rectangle(frame, (x, y), (x + w, y + h), box_color, 5)
-            cv2.putText(frame, label, (x, y - 10), cv2.FONT_HERSHEY_PLAIN, 3, text_color, 3)
+def main_loop():
+    global last_alert_time
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            print("Failed to grab frame. Exiting...")
+            break
+        drone_coords = get_gps_coordinates()
+        height, width, _ = frame.shape
+        boxes, confidences, class_ids, indexes = process_frame(frame, net, output_layers, classes, width, height)
+        current_time = time.time()
+        # Draw detections
+        if len(indexes) > 0:
+            indexes = indexes.flatten() if isinstance(indexes, np.ndarray) else indexes
+            for i in indexes:
+                x, y, w, h = boxes[i]
+                label = str(classes[class_ids[i]])
+                cv2.rectangle(frame, (x, y), (x + w, y + h), box_color, 5)
+                cv2.putText(frame, label, (x, y - 10), cv2.FONT_HERSHEY_PLAIN, 3, text_color, 3)
+                if drone_coords:
+                    box_center_x = x + w / 2
+                    box_center_y = y + h / 2
+                    horizontal_angle = ((box_center_x / width) - 0.5) * camera_fov_horizontal
+                    vertical_angle = ((box_center_y / height) - 0.5) * camera_fov_vertical
+                    distance = 100  # Example value
+                    explosion_lat, explosion_lng = calculate_target_coordinates(drone_coords, distance, horizontal_angle)
+                    gps_text = f"Lat: {explosion_lat:.6f}, Lng: {explosion_lng:.6f}"
+                    cv2.putText(frame, gps_text, (x, y + h + 20), cv2.FONT_HERSHEY_SIMPLEX, 0.6, text_color, 2)
+            # Alert only once per cooldown
+            if current_time - last_alert_time > cooldown_period:
+                if drone_coords:
+                    box_center_x = boxes[indexes[0]][0] + boxes[indexes[0]][2] / 2
+                    box_center_y = boxes[indexes[0]][1] + boxes[indexes[0]][3] / 2
+                    horizontal_angle = ((box_center_x / width) - 0.5) * camera_fov_horizontal
+                    vertical_angle = ((box_center_y / height) - 0.5) * camera_fov_vertical
+                    distance = 100  # Example value
+                    target_lat, target_lng = calculate_target_coordinates(drone_coords, distance, horizontal_angle)
+                    target_coords = {
+                        "latitude": target_lat,
+                        "longitude": target_lng,
+                        "address": get_location_details(target_lat, target_lng)
+                    }
+                    send_email(drone_coords, target_coords)
+                else:
+                    print("Unable to retrieve GPS coordinates.")
+                last_alert_time = current_time
+        # Display real-time GPS coordinates on the video feed
+        if drone_coords:
+            gps_text = f"GPS: Lat {drone_coords[0]:.6f}, Lng {drone_coords[1]:.6f}"
+        else:
+            gps_text = "GPS: Unable to retrieve coordinates"
+        cv2.putText(frame, gps_text, (10, height - 20), cv2.FONT_HERSHEY_SIMPLEX, 0.6, text_color, 2)
+        # Display cursor GPS coordinates if available
+        if cursor_coords and drone_coords:
+            cursor_x, cursor_y = cursor_coords
+            cursor_lat, cursor_lng = map_cursor_to_gps(
+                cursor_x, cursor_y, drone_coords, width, height,
+                image_width, image_height,
+                camera_fov_horizontal, camera_fov_vertical,
+                camera_altitude, pitch_angle, roll_angle, yaw_angle
+            )
+            cursor_text = f"Cursor: Lat {cursor_lat:.6f}, Lng {cursor_lng:.6f}"
+            cv2.putText(frame, cursor_text, (cursor_x + 10, cursor_y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
+            cv2.circle(frame, (cursor_x, cursor_y), 5, (0, 255, 0), -1)
+        cv2.imshow("Real-Time Detection", frame)
+        key = cv2.waitKey(1) & 0xFF
+        if key == ord('q') or key == 27:
+            print("Termination key pressed. Exiting...")
+            break
+    cap.release()
+    cv2.destroyAllWindows()
 
-            if drone_coords:
-                # Calculate explosion-specific coordinates
-                box_center_x = x + w / 2
-                box_center_y = y + h / 2
-                horizontal_angle = ((box_center_x / width) - 0.5) * camera_fov_horizontal
-                vertical_angle = ((box_center_y / height) - 0.5) * camera_fov_vertical
-                distance = 100  # Example value
-                explosion_lat, explosion_lng = calculate_target_coordinates(drone_coords, distance, horizontal_angle)
-
-                # Display GPS coordinates on the detection box
-                gps_text = f"Lat: {explosion_lat:.6f}, Lng: {explosion_lng:.6f}"
-                cv2.putText(frame, gps_text, (x, y + h + 20), cv2.FONT_HERSHEY_SIMPLEX, 0.6, text_color, 2)
-                current_time = time.time()
-                
-        if current_time - last_alert_time > cooldown_period:
-            if drone_coords:
-                box_center_x = boxes[indexes[0]][0] + boxes[indexes[0]][2] / 2
-                box_center_y = boxes[indexes[0]][1] + boxes[indexes[0]][3] / 2
-                horizontal_angle = ((box_center_x / width) - 0.5) * camera_fov_horizontal
-                vertical_angle = ((box_center_y / height) - 0.5) * camera_fov_vertical
-                distance = 100  # Example value
-                target_lat, target_lng = calculate_target_coordinates(drone_coords, distance, horizontal_angle)
-                target_coords = {
-                    "latitude": target_lat,
-                    "longitude": target_lng,
-                    "address": get_location_details(target_lat, target_lng)
-                }
-                send_email(drone_coords, target_coords)
-            else:
-                print("Unable to retrieve GPS coordinates.")
-            last_alert_time = current_time
-
-    # Display real-time GPS coordinates on the video feed
-    if drone_coords:
-        gps_text = f"GPS: Lat {drone_coords[0]:.6f}, Lng {drone_coords[1]:.6f}"
-    else:
-        gps_text = "GPS: Unable to retrieve coordinates"
-    cv2.putText(frame, gps_text, (10, height - 20), cv2.FONT_HERSHEY_SIMPLEX, 0.6, text_color, 2)
-
-    cv2.imshow("Real-Time Detection", frame)
-    
-    # Check for termination key
-    key = cv2.waitKey(1) & 0xFF
-    if key == ord('q') or key == 27:  # 'q' or 'ESC' key
-        print("Termination key pressed. Exiting...")
-        break
-    
-# Function to map cursor position to GPS coordinates
-from geopy.distance import geodesic
-from geopy.point import Point
-import math
+if __name__ == "__main__":
+    main_loop()
 
 def map_cursor_to_gps(cursor_x, cursor_y, drone_coords, frame_width, frame_height, image_width, image_height, 
                       camera_fov_horizontal, camera_fov_vertical, camera_altitude, pitch_angle, roll_angle, yaw_angle, 
