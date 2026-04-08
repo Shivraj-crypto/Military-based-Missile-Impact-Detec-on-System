@@ -1,5 +1,8 @@
 ﻿
+
 # Military-based Missile Impact Detection System
+
+![Project Architecture](project-architecture.png)
 
 ## Overview
 
