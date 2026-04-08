@@ -31,10 +31,20 @@ This project is a real-time missile/explosion impact detection system using comp
 
 ```
 Military-based-Missile-Impact-Detec-on-System/
-├── yolo_impact_detection(zen 421.3).py   # Main detection and alert script
+├── impact_system/
+│   ├── __init__.py
+│   ├── app.py                            # Main runtime loop and orchestration
+│   ├── config.py                         # Central configuration
+│   ├── detector.py                       # YOLO model loading and detection
+│   ├── gps_service.py                    # GPS/geolocation and coordinate utilities
+│   ├── alert_service.py                  # Email alert delivery
+│   └── cursor_mapper.py                  # Cursor-to-GPS mapping logic
+├── yolo_impact_detection(zen 421.3).py   # Entrypoint script
 ├── yolov3_testing.cfg                    # YOLOv3 config file
-├── yolov3_testing - Copy.cfg             # (Backup/alternate config)
-├── README.md                             # Project documentation
+├── yolov3_testing - Copy.cfg             # Backup/alternate config
+├── requirements.txt                      # Python dependencies
+├── project-architecture.png              # System flow diagram
+└── README.md                             # Project documentation
 ```
 
 ## Requirements
@@ -50,7 +60,7 @@ Military-based-Missile-Impact-Detec-on-System/
 
 Install dependencies with:
 ```
-pip install opencv-python numpy geopy googlemaps requests
+pip install -r requirements.txt
 ```
 
 ## Setup & Usage
@@ -58,13 +68,14 @@ pip install opencv-python numpy geopy googlemaps requests
 1. **Edit the script:**
 	- Set your Google Maps API key in `GOOGLE_MAPS_API_KEY`.
 	- Set your email credentials for SMTP (use an app password for Gmail).
-	- Update YOLO weights/config paths if needed.
+	- Optionally set `YOLO_CFG_PATH` and `YOLO_WEIGHTS_PATH` environment variables.
+	- You can also adjust runtime constants in `impact_system/config.py`.
 
 2. **Run the script:**
-	```
-	python yolo_impact_detection(zen 421.3).py
-	```
-	- Follow prompts to select camera and location source.
+    ```
+    python "yolo_impact_detection(zen 421.3).py"
+    ```
+    - Follow prompts to select camera and location source.
 
 3. **Operation:**
 	- The video window will show real-time detection.
