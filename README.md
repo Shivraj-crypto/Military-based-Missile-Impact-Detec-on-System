@@ -2,7 +2,7 @@
 
 # Military-based Missile Impact Detection System
 
-![Project Architecture](project-architecture.png)
+
 
 ## Overview
 
@@ -87,6 +87,11 @@ pip install opencv-python numpy geopy googlemaps requests
 - The system is designed for demonstration and research; adapt for production use as needed.
 - Cooldown period prevents alert spamming (default: 60 seconds).
 
+
 ## License
 
 This project is for research and demonstration purposes. Add a license if you intend to share or deploy publicly.
+
+---
+
+![Project Architecture](project-architecture.png)
